@@ -163,20 +163,13 @@ int main(int argc, char *argv[]) {
 
   char prefix = ':';
 
-  
-  string username = getenv("USER") ? getenv("USER") : "unknown";
-  string pwd;
-  try {
-    pwd = std::filesystem::current_path().string();
-  } catch (const std::exception &e) {
-    pwd = "unknown";
-  }
-  string hostname = "unknown"; // Default value
+  string username = getenv("USER");
+  string pwd = std::filesystem::current_path().string();
+  string hostname;
   string os_icon;
-  ifstream hostname_file("/etc/hostname");
-  if (hostname_file.is_open() && !hostname_file.eof()) {
-    getline(hostname_file, hostname);
-  }
+  ifstream hostname_file;
+  hostname_file.open("/etc/hostname");
+  getline(hostname_file, hostname);
   ifstream os_release_file;
   os_release_file.open("/etc/os-release");
   string os_release_line;

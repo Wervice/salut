@@ -1,0 +1,56 @@
+Description: <short summary of the patch>
+ TODO: Put a short summary on the line above and replace this paragraph
+ with a longer explanation of this change. Complete the meta-information
+ with other relevant fields (see below for details). To make it easier, the
+ information below has been extracted from the changelog. Adjust it or drop
+ it.
+ .
+ salut (1.0-1) stable; urgency=medium
+ .
+   * Initial release. (Closes: #1101803)
+Author: fauzy <fauzy@debian>
+Bug-Debian: https://bugs.debian.org/1101803
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout https://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Origin: (upstream|backport|vendor|other), (<patch-url>|commit:<commit-id>)
+Bug: <upstream-bugtracker-url>
+Bug-Debian: https://bugs.debian.org/<bugnumber>
+Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
+Forwarded: (no|not-needed|<patch-forwarded-url>)
+Applied-Upstream: <version>, (<commit-url>|commit:<commid-id>)
+Reviewed-By: <name and email of someone who approved/reviewed the patch>
+Last-Update: 2025-04-02
+
+--- salut-1.0.orig/main.cpp
++++ salut-1.0/main.cpp
+@@ -163,13 +163,20 @@ int main(int argc, char *argv[]) {
+ 
+   char prefix = ':';
+ 
+-  string username = getenv("USER");
+-  string pwd = std::filesystem::current_path().string();
+-  string hostname;
++  
++  string username = getenv("USER") ? getenv("USER") : "unknown";
++  string pwd;
++  try {
++    pwd = std::filesystem::current_path().string();
++  } catch (const std::exception &e) {
++    pwd = "unknown";
++  }
++  string hostname = "unknown"; // Default value
+   string os_icon;
+-  ifstream hostname_file;
+-  hostname_file.open("/etc/hostname");
+-  getline(hostname_file, hostname);
++  ifstream hostname_file("/etc/hostname");
++  if (hostname_file.is_open() && !hostname_file.eof()) {
++    getline(hostname_file, hostname);
++  }
+   ifstream os_release_file;
+   os_release_file.open("/etc/os-release");
+   string os_release_line;

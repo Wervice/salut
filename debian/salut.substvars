@@ -1,0 +1,3 @@
+shlibs:Depends=libc6 (>= 2.34), libfmt9 (>= 9.1.0+ds1), libgcc-s1 (>= 3.0), libstdc++6 (>= 11)
+misc:Depends=
+misc:Pre-Depends=
