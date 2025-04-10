@@ -143,6 +143,11 @@ void quit() {
 }
 
 int main(int argc, char *argv[]) {
+  // Check if running from a display manager
+  if (getenv("DISPLAY") != nullptr) {
+    return 0;  // Exit silently if running from a display manager
+  }
+
   struct winsize w;
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
