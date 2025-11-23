@@ -30,6 +30,12 @@ clang++ -o salut -O3 main.cpp -lfmt -I./include  && ./salut
 ```bash
 nix-shell
 ```
+- d) If you are on macOS
+```bash
+brew install fmt
+brew install nlohmann-json
+g++ main_for_mac.cpp -std=c++17 -I/opt/homebrew/include -L/opt/homebrew/lib -lfmt -o salut
+```
 
 3. Copy the executable somewhere else
 I recommend moving the executable into a folder in your `$PATH`, but you can choose any location you like.
