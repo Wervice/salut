@@ -16,358 +16,373 @@
 #include <unistd.h>
 #include <vector>
 #include <nlohmann/json.hpp>
+
 using namespace std;
 using json = nlohmann::json;
 
-vector<string> split(string a, char delim) {
-  vector<string> result;
-  string left = a;
+// ==============================
+// UTILITY FUNCTIONS
+// ==============================
 
-  while (left.find(delim) != std::string::npos) {
-    int index = left.find_first_of(delim);
-    result.push_back(left.substr(0, index));
-    left = left.substr(index + 1, left.length());
-  }
-
-  result.push_back(left);
-
-  return result;
+vector<string> split(const string& str, char delim) {
+    vector<string> result;
+    string remaining = str;
+    while (remaining.find(delim) != string::npos) {
+        size_t index = remaining.find_first_of(delim);
+        result.push_back(remaining.substr(0, index));
+        remaining = remaining.substr(index + 1);
+    }
+    result.push_back(remaining);
+    return result;
 }
 
 string center_x(string a, int w) {
-  vector<string> lines = split(a, '\n');
-  string result;
+    vector<string> lines = split(a, '\n');
+    string result;
 
-  int len = utf8::distance(lines[0].begin(), lines[0].end());
-  int padding = (w - len) / 2;
-  if (padding <= 0) {
+    int len = utf8::distance(lines[0].begin(), lines[0].end());
+    int padding = (w - len) / 2;
+    if (padding <= 0) {
+        return result;
+    }
+    string padstr = string(padding, ' ');
+    for (string line : lines) {
+        result.append(padstr);
+        result.append(line);
+        result.append("\n");
+    }
+
     return result;
-  }
-  string padstr = string(padding, ' ');
-  for (string line : lines) {
-    result.append(padstr);
-    result.append(line);
-    result.append("\n");
-  }
-
-  return result;
 }
 
-string center_y(string a, int h, bool fill) {
-  vector<string> lines = split(a, '\n');
-  string result;
-  int padding = (h - lines.size()) / 2 + 1;
-  if (padding <= 0) {
+string center_y(const string& str, int height, bool fill = true) {
+    vector<string> lines = split(str, '\n');
+    string result;
+
+    int padding = (height - lines.size()) / 2 + 1;
+    if (padding <= 0) return str;
+
+    result.append(string(padding, '\n') + str);
+    if (fill) result.append(string(padding, '\n'));
+
     return result;
-  }
-  result.append(string(padding, '\n'));
-  result.append(a);
-
-  if (fill) {
-    result.append(string(padding, '\n'));
-  }
-
-  return result;
 }
 
-void clear_screen() { std::cout << "\033[2J\033[1;1H"; }
+void clear_screen() {
+    cout << "\033[2J\033[1;1H";
+}
 
-typedef struct {
-  string name;
-  string icon;
-  string shortcut;
-  string command;
-} Program;
+// ==============================
+// PROGRAM STRUCTURE
+// ==============================
+
+struct Program {
+    string name;
+    string icon;
+    string shortcut;
+    string command;
+};
 
 Program make_program(string name, string icon, string shortcut, string command) {
-  Program program = {name, icon, shortcut, command}; 
-  return program;
+    return Program{name, icon, shortcut, command};
 }
 
 void to_json(json& j, const Program& p) {
-    j = json{
-        {"name", p.name},
-        {"icon", p.icon},
-        {"shortcut", p.shortcut},
-        {"command", p.command}
-    };
+    j = json{{"name", p.name}, {"icon", p.icon}, {"shortcut", p.shortcut}, {"command", p.command}};
 }
 
-vector<Program> parse_config(json config) {
-  vector<Program> programs;
-  for(auto& item: config) {
-    programs.push_back(make_program(item["name"],item["icon"], item["shortcut"], item["command"]));
-  }
-  return programs;
-}
-
-string format_options(vector<Program> options) {
-  string result;
-  int break_c = 0;
-
-  for (auto el : options) {
-    string break_pad;
-    break_c++;
-    if (break_c == 2) {
-      break_pad = "\n";
-      break_c = 0;
-    } else {
-      break_pad = "\t";
+//  Parse configuration supporting both older array format and newer object with "programs"
+vector<Program> parse_config(const json& config) {
+    vector<Program> programs;
+    if (config.is_object() && config.contains("programs") && config["programs"].is_array()) {
+        for (const auto& item : config["programs"]) {
+            programs.push_back(make_program(item.value("name", string("unknown")),
+                                            item.value("icon", string("")),
+                                            item.value("shortcut", string("")),
+                                            item.value("command", string(""))));
+        }
+    } else if (config.is_array()) {
+        for (const auto& item : config) {
+            //  older format: array of program objects
+            programs.push_back(make_program(item.value("name", string("unknown")),
+                                            item.value("icon", string("")),
+                                            item.value("shortcut", string("")),
+                                            item.value("command", string(""))));
+        }
     }
-    result.append(fmt::format("{} {} [:{}]{}", el.icon, el.name,
-                              el.shortcut, break_pad));
-  }
-
-  return result;
+    return programs;
 }
+
+string format_options(const vector<Program>& options, const string& separator) {
+    string result;
+    int counter = 0;
+
+    for (const auto& el : options) {
+        counter++;
+        string sep = (counter == 2) ? "\n" : separator;
+        if (counter == 2) counter = 0;
+        result.append(fmt::format("{} {} [:{}]{}", el.icon, el.name, el.shortcut, sep));
+    }
+    return result;
+}
+
+// ==============================
+// TERMINAL INPUT
+// ==============================
 
 int getch() {
-  char ch;
-  struct termios oldattr;
-  struct termios newattr;
+    char ch;
+    struct termios oldattr, newattr;
 
-  tcgetattr(STDIN_FILENO, &oldattr);
-  newattr = oldattr;
-  newattr.c_lflag &= ~ICANON;
-  newattr.c_lflag &= ~ECHO;
-  newattr.c_cc[VMIN] = 1;
-  newattr.c_cc[VTIME] = 0;
-  tcsetattr(STDIN_FILENO, TCSANOW, &newattr);
-  ch = getchar();
-  tcsetattr(STDIN_FILENO, TCSANOW, &oldattr);
+    tcgetattr(STDIN_FILENO, &oldattr);
+    newattr = oldattr;
+    newattr.c_lflag &= ~ICANON;
+    newattr.c_lflag &= ~ECHO;
+    newattr.c_cc[VMIN] = 1;
+    newattr.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &newattr);
 
-  return ch;
+    ch = getchar();
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldattr);
+    return ch;
 }
 
-enum Color { RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE };
+// ==============================
+// COLOR UTILITIES
+// ==============================
 
-string colorize(string s, Color c) {
-  int code;
-  if (c == RED) {
-    code = 31;
-  } else if (c == GREEN) {
-    code = 32;
-  } else if (c == YELLOW) {
-    code = 33;
-  } else if (c == BLUE) {
-    code = 34;
-  } else if (c == MAGENTA) {
-    code = 35;
-  } else if (c == CYAN) {
-    code = 36;
-  } else if (c == WHITE) {
-    code = 0;
-  }
+enum Color { RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, RANDOM };
 
-  return fmt::format("\033[{}m{}\033[0m", code, s);
+string colorize(const string& str, int code) {
+    return fmt::format("\033[{}m{}\033[0m", code, str);
 }
 
 void quit() {
-  clear_screen();
-  int ret = system("clear");
-  if (ret == -1) {
-    std::cerr << "Error: clear command failed!\n";
-    exit(1);
-  }
-  exit(0);
+    clear_screen();
+    exit(0);
 }
 
+// ==============================
+// MAIN PROGRAM
+// ==============================
 
-int main(int argc, char *argv[]) {
-  // Reported by PhoenixAceVFX in this PR: https://github.com/Wervice/salut/pull/10
-  // and later modified
-  // -------
-  if (getenv("DISPLAY") == nullptr) {
-    return 0;  // Exit silently if running from a display manager
-  }
-  // -------
-
-  struct winsize w;
-  ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-
-  bool qt = false;
-  if (argc > 1) {
-    if (strcmp(argv[1], "--quick-tap") == 0) {
-      qt = true;
+int main(int argc, char* argv[]) {
+    // Reported by PhoenixAceVFX in this PR: https://github.com/Wervice/salut/pull/10
+    // and later modified
+    // -------
+    if (getenv("DISPLAY") == nullptr) {
+        return 0;  // Exit silently if running from a display manager
     }
-  }
+    // -------
+    // The block above was intentionally saved (commented) per your request.
 
-  string ascii_art =
-    "██╗    ██╗███████╗██╗      ██████╗ ██████╗ ███╗   ███╗███████╗\n██║    "
-    "██║██╔════╝██║     ██╔════╝██╔═══██╗████╗ ████║██╔════╝\n██║ █╗ "
-    "██║█████╗  ██║     ██║     ██║   ██║██╔████╔██║█████╗  "
-    "\n██║███╗██║██╔══╝  ██║     ██║     ██║   ██║██║╚██╔╝██║██╔══╝  "
-    "\n╚███╔███╔╝███████╗███████╗╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗\n "
-    "╚══╝╚══╝ ╚══════╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝";
+    struct winsize w;
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
-  char prefix = ':';
+    bool qt = (argc > 1 && strcmp(argv[1], "--quick-tap") == 0);
 
+    const char* xdg_config = getenv("XDG_CONFIG_HOME");
+    string config_dir = (xdg_config != nullptr) ? string(xdg_config) + "/salut" : string(getenv("HOME")) + "/.config/salut";
+    filesystem::create_directories(config_dir);
 
-  string username = getenv("USER") ? getenv("USER") : "unknown";
-  string pwd;
-  try {
-    pwd = std::filesystem::current_path().string();
-  } catch (const std::exception &e) {
-    pwd = "unknown";
-  }
-  string hostname = "unknown"; // Default value
-  string os_icon;
-  ifstream hostname_file("/etc/hostname");
-  if (hostname_file.is_open() && !hostname_file.eof()) {
-    getline(hostname_file, hostname);
-  }
-  ifstream os_release_file;
-  os_release_file.open("/etc/os-release");
-  string os_release_line;
-  getline(os_release_file, os_release_line);
-  while (split(os_release_line, '=')[0] != "ID") {
-    getline(os_release_file, os_release_line);
-  }
-  string id = split(os_release_line, '=')[1];
-  if (id == "arch") {
-    os_icon = colorize(" ", BLUE);
-  } else if (id == "debian") {
-    os_icon = colorize(" ", RED);
-  } else if (id == "ubuntu") {
-    os_icon = colorize("󰕈 ", YELLOW);
-  } else if (id == "fedora") {
-    os_icon = colorize(" ", BLUE);
-  } else if (id == "nixos") {
-    os_icon = colorize(" ", BLUE);
-  } else if (id == "linuxmint") {
-    os_icon = colorize("󰣭 ", GREEN);
-  } else if (id == "gentoo") {
-    os_icon = colorize(" ", BLUE);
-  } else if (id == "\"endeavouros\"") {
-    os_icon = colorize(" ", BLUE);
-  } else {
-    os_icon = colorize(" ", YELLOW);
-  }
+    string config_path = config_dir + "/config.json";
+    string ascii_file_path = config_dir + "/custom-ascii-art.txt";
 
-  vector<Program> default_options = {
-    make_program("Neovim", " ", "nz", "nvim"),
-    make_program("Fastfetch", os_icon, "ft", "fastfetch"),
-    make_program("Zsh", "$ ", "zs", "zsh"),
-    make_program("Btop", " ", "bp", "btop"),
-  };
+    const string default_ascii =
+        "██╗    ██╗███████╗██╗      ██████╗ ██████╗ ███╗   ███╗███████╗\n"
+        "██║    ██║██╔════╝██║     ██╔════╝██╔═══██╗████╗ ████║██╔════╝\n"
+        "██║ █╗ ██║█████╗  ██║     ██║     ██║   ██║██╔████╔██║█████╗  \n"
+        "██║███╗██║██╔══╝  ██║     ██║     ██║   ██║██║╚██╔╝██║██╔══╝  \n"
+        "╚███╔███╔╝███████╗███████╗╚██████╗╚██████╔╝██║ ╚═╝ ██║███████╗\n"
+        " ╚══╝╚══╝ ╚══════╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝";
 
-  const char* xdg_config = getenv("XDG_CONFIG_HOME");
-  string config_path;
-  if (xdg_config != nullptr) {
-    config_path = string(xdg_config) + "/salut/config.json";
-  } else {
-    config_path = string(getenv("HOME")) + "/.config/salut/config.json";
-  }
-  vector<Program> options;
-  std::filesystem::path config_file_path(config_path);
-
-  if (std::filesystem::exists(config_file_path)) {
-    try {
-      ifstream in_file(config_path);
-      json config = json::parse(in_file);
-      options = parse_config(config);
-    } catch (const exception& e) {
-      cerr << "Error reading config file: " << e.what() << endl;
-      options = default_options;
-    }
-  } else {
-    std::filesystem::path config_dir = config_file_path.parent_path();
-    if (!std::filesystem::exists(config_dir)) {
-      std::filesystem::create_directories(config_dir);
-    }
-    options = default_options;
-    json j = default_options;
-    ofstream out_file(config_path);
-    out_file << j.dump(4);
-  }
-
-  static random_device rd;
-  static mt19937 gen(rd());
-  std::uniform_int_distribution<> dis(0, WHITE);
-  Color rand_color = static_cast<Color>(dis(gen));
-
-  pwd.replace(0, strlen(getenv("HOME")), "~");
-  string subtitle = fmt::format("  {}     {}  {}{}", username, pwd,
-                                os_icon, hostname);
-  string exit_directory;
-
-  std::cout << "\033[32m";
-  string screen = fmt::format(
-    "{}\n{}\n{}\n{}", colorize(center_x(ascii_art, w.ws_col), rand_color),
-    colorize(center_x(fmt::format("Press {} to keep open", prefix), w.ws_col),
-             MAGENTA),
-    colorize(center_x(subtitle, w.ws_col + 10), WHITE),
-    colorize(center_x(format_options(options), w.ws_col), WHITE));
-  std::cout << center_y(screen, w.ws_row, true);
-  std::cout << "\033[0m";
-
-  if (!qt) {
-    char p = getch();
-    string c_inp;
-    if (p != prefix) {
-      quit();
-    }
-  }
-
-  screen = fmt::format(
-    "{}\n{}\n{}", colorize(center_x(ascii_art, w.ws_col), rand_color),
-    colorize(center_x(subtitle, w.ws_col + 10), WHITE),
-    colorize(center_x(format_options(options), w.ws_col), WHITE));
-  std::cout << center_y(screen, w.ws_row, true);
-
-  bool immediate = qt;
-  while (true) {
-    string i;
-    if (!immediate) {
-      std::cout << ":";
-      cin >> i;
-    } else {
-      i = getch();
-      immediate = false;
+    if (!filesystem::exists(ascii_file_path)) {
+        ofstream ascii_file(ascii_file_path);
+        ascii_file << default_ascii;
     }
 
-    if (i == "h") {
-      clear_screen();
-      string msg = "Salut (\033[32mfrench: Hi; /saly/\033[0m) is a terminal "
-        "greeter application\n"
-        "It provides a clean welome screen when launched and let's "
-        "you quickly launch\n"
-        "your most important applications.\n\n"
-        "\033[31mClose this message with\033[0m \t:main\n"
-        "\033[31mOpen this message with\033[0m \t:h\n"
-        "\033[31mQuit with\033[0m \t\t\t:q\n";
-      std::cout << center_y(center_x(msg, w.ws_col), w.ws_row, true);
-    } else if (i == "q") {
-      quit();
-    } else if (i == "main") {
-      std::cout << "\033[33m";
-      std::cout << center_y(screen, w.ws_row, true);
-      std::cout << "\033[0m";
-    } else {
-      for (auto el : options) {
-        if (el.shortcut == i) {
-          clear_screen();
-          int ret = std::system("clear");
-          if (ret == -1) {
-            std::cerr << "Error: clear command failed!\n";
-            exit(1);
-          }
-          string v = el.command;
-          std::vector<string> argv = split(v, ' ');
-          std::vector<char *> fitting;
-          for (string arg : argv) {
-            char *non_const = (char *)strdup(arg.c_str());
-            fitting.push_back(non_const);
-          }
-          fitting.push_back(nullptr);
-          execvp(argv[0].c_str(), fitting.data());
+    json config;
+    if (filesystem::exists(config_path)) {
+        ifstream in_file(config_path);
+        try {
+            in_file >> config;
+        } catch (...) {
+            config = json::object();
         }
-      }
-      if (qt) {
-        clear_screen();
-        int ret = system("clear");
-        exit(0);
-      }
+    } else {
+        config = {
+            {"separator_subtitle", " "},
+            {"separator_commands", "\t"},
+            {"color_art", "RANDOM"},
+            {"color_subtitle", "RANDOM"},
+            {"color_commands", "RANDOM"},
+            {"programs", {
+                { {"name", "Neovim"}, {"icon", " "}, {"shortcut", "nv"}, {"command", "nvim"} },
+                { {"name", "Fastfetch"}, {"icon", " "}, {"shortcut", "ft"}, {"command", "fastfetch"} },
+                { {"name", "Bash"}, {"icon", " "}, {"shortcut", "bs"}, {"command", "bash"} },
+                { {"name", "Btop"}, {"icon", " "}, {"shortcut", "bp"}, {"command", "btop"} }
+            }}
+        };
+        ofstream out_file(config_path);
+        out_file << config.dump(4);
     }
-  }
+
+    string ascii_art;
+    ifstream ascii_file(ascii_file_path);
+    ascii_art.assign((istreambuf_iterator<char>(ascii_file)), istreambuf_iterator<char>());
+
+    vector<Program> options = parse_config(config);
+    string separator_subtitle = config.value("separator_subtitle", " ");
+    string separator_commands = config.value("separator_commands", "\t");
+
+    //  Linux-specific: try to detect the distro from /etc/os-release and set icon
+    string os_icon;
+    string hostname = "unknown";
+    ifstream hostname_file("/etc/hostname");
+    if (hostname_file.is_open() && !hostname_file.eof()) {
+        getline(hostname_file, hostname);
+    }
+
+    string id;
+    ifstream os_release_file("/etc/os-release");
+    if (os_release_file.is_open()) {
+        string line;
+        while (getline(os_release_file, line)) {
+            if (line.rfind("ID=", 0) == 0) {
+                id = line.substr(3);
+                break;
+            }
+        }
+    }
+
+    auto colorize_icon = [&](const string& icon, int code) {
+        return fmt::format("\033[{}m{}\033[0m", code, icon);
+    };
+
+    if (id == "arch") {
+        os_icon = " ";
+    } else if (id == "debian") {
+        os_icon = " ";
+    } else if (id == "ubuntu") {
+        os_icon = "󰕈 ";
+    } else if (id == "fedora") {
+        os_icon = " ";
+    } else if (id == "nixos") {
+        os_icon = " ";
+    } else if (id == "linuxmint") {
+        os_icon = "󰣭 ";
+    } else if (id == "gentoo") {
+        os_icon = " ";
+    } else if (id == "\"endeavouros\"" || id == "endeavouros") {
+        os_icon = " ";
+    } else {
+        os_icon = " ";
+    }
+
+    //  Color parsing helpers (reuse RANDOM option)
+    auto parse_color = [](const string& cstr) -> Color {
+        if (cstr == "RED") return RED;
+        if (cstr == "GREEN") return GREEN;
+        if (cstr == "YELLOW") return YELLOW;
+        if (cstr == "BLUE") return BLUE;
+        if (cstr == "MAGENTA") return MAGENTA;
+        if (cstr == "CYAN") return CYAN;
+        if (cstr == "WHITE") return WHITE;
+        return RANDOM;
+    };
+
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_int_distribution<> dis(31, 36);
+    int random_color_code = dis(gen);
+
+    auto get_color_code = [&](const string& cstr) -> int {
+        Color c = parse_color(cstr);
+        if (c == RANDOM) return random_color_code;
+        switch(c) {
+            case RED: return 31;
+            case GREEN: return 32;
+            case YELLOW: return 33;
+            case BLUE: return 34;
+            case MAGENTA: return 35;
+            case CYAN: return 36;
+            case WHITE: return 0;
+            default: return 0;
+        }
+    };
+
+    int color_art_code = get_color_code(config.value("color_art", "RANDOM"));
+    int color_subtitle_code = get_color_code(config.value("color_subtitle", "RANDOM"));
+    int color_commands_code = get_color_code(config.value("color_commands", "RANDOM"));
+
+    string username = getenv("USER") ? getenv("USER") : "unknown";
+    string pwd = filesystem::current_path().string();
+    const char* home_env = getenv("HOME");
+    if (home_env != nullptr) {
+        pwd.replace(0, strlen(home_env), "~");
+    }
+
+    string subtitle = fmt::format(
+        "{0}   {2} {0}   {3} {0} {1} {4} {0}",
+        separator_subtitle,
+        os_icon,
+        username,
+        pwd,
+        hostname
+    );
+
+    string screen = fmt::format(
+        "{}\n{}\n{}",
+        colorize(center_x(ascii_art, w.ws_col), color_art_code),
+        colorize(center_x(subtitle, w.ws_col), color_subtitle_code),
+        colorize(center_x(format_options(options, separator_commands), w.ws_col), color_commands_code)
+    );
+
+    cout << center_y(screen, w.ws_row, true);
+    cout << "\033[0m";
+
+    if (!qt) {
+        char p = getch();
+        if (p != ':') quit();
+    }
+
+    while (true) {
+        string input;
+        if (!qt) {
+            cout << ":";
+            cin >> input;
+        } else {
+            input = string(1, getch());
+            qt = false;
+        }
+
+        if (input == "h") {
+            clear_screen();
+            string msg =
+                "Salut is a terminal greeter application\n\n"
+                "Close this message with :main\n"
+                "Open this message with :h\n"
+                "Quit with :q\n";
+            cout << colorize(center_y(center_x(msg, w.ws_col), w.ws_row, true), color_art_code);
+        } else if (input == "q") {
+            quit();
+        } else if (input == "main") {
+            cout << "\033[33m";
+            cout << center_y(screen, w.ws_row, true);
+            cout << "\033[0m";
+        } else {
+            for (auto& el : options) {
+                if (el.shortcut == input) {
+                    clear_screen();
+                    vector<string> argv = split(el.command, ' ');
+                    vector<char*> exec_args;
+                    for (const string& arg : argv) exec_args.push_back(strdup(arg.c_str()));
+                    exec_args.push_back(nullptr);
+                    execvp(argv[0].c_str(), exec_args.data());
+                }
+            }
+        }
+    }
+
+    return 0;
 }

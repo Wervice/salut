@@ -35,23 +35,18 @@ vector<string> split(string str, char delim) {
     return result;
 }
 
-string center_x(const string& a, int w) {
+string center_x(string a, int w) {
     vector<string> lines = split(a, '\n');
     string result;
 
-    // Determine widest line (UTF-8)
-    int max_len = 0;
-    for (const auto& line : lines) {
-        int l = utf8::distance(line.begin(), line.end());
-        if (l > max_len) max_len = l;
+    int len = utf8::distance(lines[0].begin(), lines[0].end());
+    int padding = (w - len) / 2;
+    if (padding <= 0) {
+        return result;
     }
-
-    for (const auto& line : lines) {
-        int l = utf8::distance(line.begin(), line.end());
-        int padding = (w - l) / 2;
-        if (padding < 0) padding = 0;
-
-        result.append(string(padding, ' '));
+    string padstr = string(padding, ' ');
+    for (string line : lines) {
+        result.append(padstr);
         result.append(line);
         result.append("\n");
     }
@@ -59,6 +54,20 @@ string center_x(const string& a, int w) {
     return result;
 }
 
+
+string get_mac_model() {
+    array<char, 256> buffer;
+    string result;
+    FILE* pipe = popen("system_profiler SPHardwareDataType | grep 'Model Name\\|Chip\\|Processor Name' | awk -F': ' '{printf \"%s \", $2}'", "r");
+    if (!pipe) return "Unknown Mac";
+
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) result += buffer.data();
+    pclose(pipe);
+
+    // Remove trailing space
+    if (!result.empty() && result.back() == ' ') result.pop_back();
+    return result;
+}
 
 string center_y(const string& str, int height, bool fill = true) {
     vector<string> lines = split(str, '\n');
@@ -193,14 +202,16 @@ int main(int argc, char* argv[]) {
         }
     } else {
         config = {
-            {"separator_subtitle", "✦"},
-            {"separator_commands", "    "},
+            {"separator_subtitle", " "},
+            {"separator_commands", "\t"},
             {"color_art", "RANDOM"},
             {"color_subtitle", "RANDOM"},
             {"color_commands", "RANDOM"},
             {"programs", {
-                { {"name", "Fastfetch"}, {"icon", "󰍹 "}, {"shortcut", "ff"}, {"command", "fastfetch"} },
-                { {"name", "Terminal"}, {"icon", " "}, {"shortcut", "k"}, {"command", "kitty"} }
+                { {"name", "Neovim"}, {"icon", " "}, {"shortcut", "nv"}, {"command", "nvim"} },
+                { {"name", "Fastfetch"}, {"icon", "󰍹 "}, {"shortcut", "ft"}, {"command", "fastfetch"} },
+                { {"name", "Zsh"}, {"icon", " "}, {"shortcut", "zs"}, {"command", "zsh"} },
+                { {"name", "Btop"}, {"icon", " "}, {"shortcut", "bp"}, {"command", "btop"} }
             }}
         };
         ofstream out_file(config_path);
@@ -213,7 +224,7 @@ int main(int argc, char* argv[]) {
 
     vector<Program> options = parse_config(config);
     string separator_subtitle = config.value("separator_subtitle", " ");
-    string separator_commands = config.value("separator_commands", "    ");
+    string separator_commands = config.value("separator_commands", "\t");
 
     auto parse_color = [](const string& cstr) -> Color {
         if (cstr == "RED") return RED;
@@ -254,13 +265,14 @@ int main(int argc, char* argv[]) {
     string pwd = filesystem::current_path().string();
     pwd.replace(0, strlen(getenv("HOME")), "~");
 
+    string mac_model = get_mac_model();
     string subtitle = fmt::format(
-        "{0}   {1} {0}   {2} {0}",
+        "{0}   {1} {0}   {2} {0}   {3} {0}",
         separator_subtitle,
         username,
-        pwd
+        pwd,
+        mac_model
     );
-
     
     string screen = fmt::format(
         "{}\n{}\n{}", 
