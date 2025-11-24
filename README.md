@@ -34,15 +34,16 @@ nix-shell
 ```bash
 brew install fmt
 brew install nlohmann-json
-g++ main_for_mac.cpp -std=c++17 -I/opt/homebrew/include -L/opt/homebrew/lib -lfmt -o salut
+g++ main_for_mac.cpp -std=c++17 -I/opt/homebrew/include -L/opt/homebrew/lib -lfmt -o salut && ./salut
 ```
 
 3. Copy the executable somewhere else
 I recommend moving the executable into a folder in your `$PATH`, but you can choose any location you like.
 4. Add `salut` binary path to your config file
 Depending on your shell, your config file may be called:
-- `.zshrc`
-- `.bashrc`
+- `~/.bashrc`
+- `~/.zshrc`
+- `~/.config/fish/config.fish`
 5. Salut will now launch every time you open a new shell
 
 ### Usage
