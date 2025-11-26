@@ -7,7 +7,8 @@ Build-Depends:
  debhelper-compat (= 13), 
  g++, 
  clang, 
- libfmt-dev
+ libfmt-dev,
+ nlohmann-json3-dev
 Standards-Version: 4.6.2
 Homepage: https://github.com/Wervice/salut
 #Vcs-Browser: https://salsa.debian.org/debian/salut

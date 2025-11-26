@@ -1,6 +1,8 @@
 # Salut
 ## A beautiful terminal greeter 🌸
 
+[![Build and Release Debian Package](https://github.com/fauzymadani/salut/actions/workflows/build.yml/badge.svg)](https://github.com/fauzymadani/salut/actions/workflows/build.yml)
+
 Salut is a simple yet beautiful terminal greeter.   
 To use it, simply attach the path of the salut binary to the top of your shell config file.
 Salut will then launch, everytime you open your shell.
